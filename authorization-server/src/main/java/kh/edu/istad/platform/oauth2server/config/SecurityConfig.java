@@ -1,17 +1,7 @@
-package kh.edu.istad.platform.authorization.config;
+package kh.edu.istad.platform.oauth2server.config;
 
-import java.security.KeyPair;
-import java.security.KeyPairGenerator;
-import java.security.interfaces.RSAPrivateKey;
-import java.security.interfaces.RSAPublicKey;
-import java.util.UUID;
-
-import com.nimbusds.jose.jwk.JWKSet;
-import com.nimbusds.jose.jwk.RSAKey;
 import com.nimbusds.jose.jwk.source.JWKSource;
 import com.nimbusds.jose.proc.SecurityContext;
-
-import kh.edu.istad.platform.authorization.persistence.service.JpaOAuth2AuthorizationService;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -19,21 +9,21 @@ import org.springframework.core.annotation.Order;
 import org.springframework.http.MediaType;
 import org.springframework.security.config.Customizer;
 import org.springframework.security.config.annotation.web.builders.HttpSecurity;
+import org.springframework.security.config.annotation.web.configuration.OAuth2AuthorizationServerConfiguration;
 import org.springframework.security.config.annotation.web.configurers.oauth2.server.authorization.OAuth2AuthorizationServerConfigurer;
-import org.springframework.security.core.userdetails.User;
-import org.springframework.security.core.userdetails.UserDetailsService;
-import org.springframework.security.crypto.factory.PasswordEncoderFactories;
+import org.springframework.security.crypto.bcrypt.BCryptPasswordEncoder;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.oauth2.jwt.JwtDecoder;
 import org.springframework.security.oauth2.server.authorization.settings.AuthorizationServerSettings;
-import org.springframework.security.provisioning.InMemoryUserDetailsManager;
 import org.springframework.security.web.SecurityFilterChain;
 import org.springframework.security.web.authentication.LoginUrlAuthenticationEntryPoint;
 import org.springframework.security.web.util.matcher.MediaTypeRequestMatcher;
 
+import java.security.KeyPair;
+import java.security.KeyPairGenerator;
+
 @Configuration
 public class SecurityConfig {
-
-
 
     @Bean
     @Order(1)
@@ -46,11 +36,7 @@ public class SecurityConfig {
         http
                 .securityMatcher(authorizationServerConfigurer.getEndpointsMatcher())
                 .with(authorizationServerConfigurer, authorizationServer ->
-                        authorizationServer
-                                .oidc(Customizer.withDefaults())
-                                .authorizationEndpoint(endpoint ->
-                                        endpoint.consentPage("/oauth2/consent")
-                                )
+                        authorizationServer.oidc(Customizer.withDefaults())
                 )
                 .authorizeHttpRequests(authorize ->
                         authorize.anyRequest().authenticated()
@@ -60,13 +46,10 @@ public class SecurityConfig {
                                 new LoginUrlAuthenticationEntryPoint("/login"),
                                 new MediaTypeRequestMatcher(MediaType.TEXT_HTML)
                         )
-                )
-                .formLogin(Customizer.withDefaults());
+                );
 
         return http.build();
     }
-
-
 
     @Bean
     @Order(2)
@@ -74,8 +57,11 @@ public class SecurityConfig {
             HttpSecurity http) throws Exception {
 
         http
+                .csrf(csrf ->
+                        csrf.ignoringRequestMatchers("/api/users", "/api/users/**")
+                )
                 .authorizeHttpRequests(authorize -> authorize
-                        .requestMatchers("/error").permitAll()
+                        .requestMatchers("/api/users", "/api/users/**").permitAll()
                         .anyRequest().authenticated()
                 )
                 .formLogin(Customizer.withDefaults());
@@ -84,47 +70,25 @@ public class SecurityConfig {
     }
 
     @Bean
-    public UserDetailsService userDetailsService() {
+    public PasswordEncoder passwordEncoder() {
+        return new BCryptPasswordEncoder();
+    }
 
-        PasswordEncoder passwordEncoder =
-                PasswordEncoderFactories.createDelegatingPasswordEncoder();
 
-        var user = User.withUsername("user")
-                .password(passwordEncoder.encode("1234"))
-                .roles("USER")
-                .build();
-
-        return new InMemoryUserDetailsManager(user);
+    private static KeyPair generateRsaKey() {
+        try {
+            KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
+            generator.initialize(2048);
+            return generator.generateKeyPair();
+        } catch (Exception ex) {
+            throw new IllegalStateException(ex);
+        }
     }
 
     @Bean
-    public JWKSource<SecurityContext> jwkSource() throws Exception {
-
-        KeyPairGenerator keyPairGenerator =
-                KeyPairGenerator.getInstance("RSA");
-
-        keyPairGenerator.initialize(2048);
-
-        KeyPair keyPair = keyPairGenerator.generateKeyPair();
-
-        RSAPublicKey publicKey =
-                (RSAPublicKey) keyPair.getPublic();
-
-        RSAPrivateKey privateKey =
-                (RSAPrivateKey) keyPair.getPrivate();
-
-        RSAKey rsaKey = new RSAKey.Builder(publicKey)
-                .privateKey(privateKey)
-                .keyID(UUID.randomUUID().toString())
-                .build();
-
-        JWKSet jwkSet = new JWKSet(rsaKey);
-
-        return (selector, context) -> selector.select(jwkSet);
+    public JwtDecoder jwtDecoder(
+            JWKSource<SecurityContext> jwkSource) {
+        return OAuth2AuthorizationServerConfiguration.jwtDecoder(jwkSource);
     }
 
-    @Bean
-    public AuthorizationServerSettings authorizationServerSettings() {
-        return AuthorizationServerSettings.builder().build();
-    }
 }
