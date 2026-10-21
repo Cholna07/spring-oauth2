@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="PersistenceUnitSettings">
+    <persistence-units>
+      <persistence-unit moduleName="spring-oauth2.authorization-server.main" name="spring-oauth2.authorization-server.main" framework="JPA" ormUnit="spring-oauth2.authorization-server.main:spring-oauth2.authorization-server.main" defaultDataSourceId="11f3cd0f-caa2-4d90-ab85-1599fcce7afd" />
+    </persistence-units>
+  </component>
+</project>
